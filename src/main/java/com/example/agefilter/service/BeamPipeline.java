@@ -21,26 +21,33 @@ import org.slf4j.LoggerFactory;
 import java.time.LocalDate;
 import java.time.Period;
 
+// Beam pipeline for reading from Kafka, filtering by age parity, and writing to separate topics
 public class BeamPipeline {
 
     private static final Logger logger = LoggerFactory.getLogger(BeamPipeline.class);
 
+    // Kafka configuration constants
     private static final String BOOTSTRAP_SERVERS = "localhost:9092";
     private static final String SOURCE_TOPIC = "SOURCE_TOPIC";
     private static final String EVEN_TOPIC = "EVEN_TOPIC";
     private static final String ODD_TOPIC = "ODD_TOPIC";
 
+    // Jackson ObjectMapper configured for Java 8 time support
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule());
 
+    // Main method to build and run the Beam pipeline
     public static void runPipeline() {
+        // Set up Flink runner options
         FlinkPipelineOptions options = PipelineOptionsFactory.as(FlinkPipelineOptions.class);
         options.setRunner(FlinkRunner.class);
         options.setStreaming(true);
         options.setParallelism(2);
 
+        // Create the pipeline with options
         Pipeline pipeline = Pipeline.create(options);
 
+        // Read from Kafka and convert JSON strings to Person objects
         var persons = pipeline
                 .apply("ReadFromKafka",
                         KafkaIO.<String, String>read()
@@ -55,7 +62,7 @@ public class BeamPipeline {
                     @Override
                     public Person apply(String json) {
                         try {
-                            Person person = MAPPER.readValue(json, Person.class);
+                            Person person = MAPPER.readValue(json, Person.class); // Deserialize JSON to Person
                             logger.info("Received: {}", person);
                             return person;
                         } catch (JsonProcessingException e) {
@@ -65,11 +72,12 @@ public class BeamPipeline {
                     }
                 }));
 
+        // Convert Person object to JSON string
         var personToJson = MapElements.via(new SimpleFunction<Person, String>() {
             @Override
             public String apply(Person person) {
                 try {
-                    String json = MAPPER.writeValueAsString(person);
+                    String json = MAPPER.writeValueAsString(person); // Serialize Person to JSON
                     logger.info("Sending: {}", json);
                     return json;
                 } catch (Exception e) {
@@ -79,14 +87,15 @@ public class BeamPipeline {
             }
         });
 
+        // Filter persons with even age and write to EVEN_TOPIC
         persons
                 .apply("FilterEvenAge", Filter.by(person -> {
-                    int age = calculateAge(person);
+                    int age = calculateAge(person); // Calculate age
                     boolean isEven = age % 2 == 0;
                     logger.info("👤 {} is {} years old → {}", person.getName(), age, isEven ? "EVEN" : "ODD");
                     return isEven;
                 }))
-                .apply("SerializeEvenPersons", personToJson)
+                .apply("SerializeEvenPersons", personToJson) // Convert to JSON
                 .apply("WriteEvenToKafka",
                         KafkaIO.<Void, String>write()
                                 .withBootstrapServers(BOOTSTRAP_SERVERS)
@@ -94,14 +103,15 @@ public class BeamPipeline {
                                 .withValueSerializer(StringSerializer.class)
                                 .values());
 
+        // Filter persons with odd age and write to ODD_TOPIC
         persons
                 .apply("FilterOddAge", Filter.by(person -> {
-                    int age = calculateAge(person);
+                    int age = calculateAge(person); // Calculate age
                     boolean isOdd = age % 2 != 0;
                     logger.info("👤 {} is {} years old → {}", person.getName(), age, isOdd ? "ODD" : "EVEN");
                     return isOdd;
                 }))
-                .apply("SerializeOddPersons", personToJson)
+                .apply("SerializeOddPersons", personToJson) // Convert to JSON
                 .apply("WriteOddToKafka",
                         KafkaIO.<Void, String>write()
                                 .withBootstrapServers(BOOTSTRAP_SERVERS)
@@ -109,9 +119,11 @@ public class BeamPipeline {
                                 .withValueSerializer(StringSerializer.class)
                                 .values());
 
+        // Execute the pipeline
         pipeline.run();
     }
 
+    // Helper method to calculate age from Person's DOB
     private static int calculateAge(Person person) {
         return Period.between(person.getDobAsLocalDate(), LocalDate.now()).getYears();
     }
