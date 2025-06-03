@@ -196,8 +196,8 @@ If you produce:
 ```
 
 Then:
-- Charlie (25) goes to `ODD_TOPIC`
-- Daisy (26) goes to `EVEN_TOPIC`
+- Ajay (25) goes to `ODD_TOPIC`
+- Rutik (26) goes to `EVEN_TOPIC`
 
 ---
 
