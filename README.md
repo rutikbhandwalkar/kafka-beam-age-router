@@ -27,6 +27,14 @@ This project is a streaming data pipeline built using **Apache Beam**, **Kafka**
 │               │   └── Person.java
 │               └── service
 │                   └── BeamPipeline.java
+│                   └── KafkaService.java
+│               ├── util
+│                   └── PersonsUtils.java
+│               ├── AgeRouterApplicaton.java
+├── test
+│       └── java
+│           └── com.example.agefilter
+│               ├── BeamPipelineTest.java
 ├── pom.xml
 └── README.md
 ```
@@ -38,8 +46,8 @@ This project is a streaming data pipeline built using **Apache Beam**, **Kafka**
 ### 1️⃣ Clone the repository
 
 ```bash
-git clone https://github.com/your-repo/apache-beam-kafka-pipeline.git
-cd apache-beam-kafka-pipeline
+git clone https://github.com/rutikbhandwalkar/kafka-beam-age-router.git
+cd kafka-beam-age-router
 ```
 
 ### 2️⃣ Start Kafka and Zookeeper (via Docker)
@@ -47,25 +55,31 @@ cd apache-beam-kafka-pipeline
 Create a `docker-compose.yml`:
 
 ```yaml
-version: '2'
-services:
-  zookeeper:
-    image: confluentinc/cp-zookeeper:latest
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-    ports:
-      - "2181:2181"
+version: '3.8'
 
-  kafka:
-    image: confluentinc/cp-kafka:latest
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+services:
+   zookeeper:
+      image: confluentinc/cp-zookeeper:7.4.0
+      environment:
+         ZOOKEEPER_CLIENT_PORT: 2181
+         ZOOKEEPER_TICK_TIME: 2000
+      ports:
+         - "2181:2181"
+
+   kafka:
+      image: confluentinc/cp-kafka:7.4.0
+      depends_on:
+         - zookeeper
+      ports:
+         - "9092:9092"
+      environment:
+         KAFKA_BROKER_ID: 1
+         KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+         KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+         KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+         KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+         KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
 ```
 
 Start the services:
@@ -79,33 +93,9 @@ docker-compose up -d
 ### 3️⃣ Start Apache Flink (via Docker)
 
 ```bash
-docker run -it --rm \
-  --name flink-jobmanager \
-  -p 8081:8081 \
-  flink:latest
+docker run -d -p 8081:8081 apache/flink:1.20.1
 ```
 
-Or use this simple `docker-compose-flink.yml`:
-
-```yaml
-version: '2'
-services:
-  jobmanager:
-    image: flink:latest
-    ports:
-      - "8081:8081"
-    command: jobmanager
-    environment:
-      - JOB_MANAGER_RPC_ADDRESS=jobmanager
-
-  taskmanager:
-    image: flink:latest
-    depends_on:
-      - jobmanager
-    command: taskmanager
-    environment:
-      - JOB_MANAGER_RPC_ADDRESS=jobmanager
-```
 
 ```bash
 docker-compose -f docker-compose-flink.yml up -d
@@ -120,7 +110,7 @@ Check Flink UI at: http://localhost:8081
 Open Kafka container bash:
 
 ```bash
-docker exec -it <kafka-container-id> bash
+docker run -d --name zookeeper -p 2181:2181 zookeeper:3.8.1
 ```
 
 Create topics:
@@ -150,7 +140,7 @@ mvn clean package
 ### 2. Run the pipeline
 
 ```bash
-java -jar target/your-artifact-name.jar
+java -jar target/kafka-beam-age-router-1.0.jar
 ```
 
 ---
@@ -160,15 +150,15 @@ java -jar target/your-artifact-name.jar
 ### Open Kafka container shell
 
 ```bash
-docker exec -it <kafka-container-id> bash
+docker exec -it docker-kafka-1 bash
 ```
 
 ### Produce test data
 
 ```bash
 kafka-console-producer --bootstrap-server localhost:9092 --topic SOURCE_TOPIC
->{"name":"Alice","dob":"2000-06-01"}
->{"name":"Bob","dob":"1999-01-02"}
+>{"name":"Ajay","dob":"2000-06-01"}
+>{"name":"Rutik","dob":"1999-01-02"}
 ```
 
 ### Consume from EVEN_TOPIC
@@ -187,7 +177,7 @@ kafka-console-consumer --bootstrap-server localhost:9092 --topic ODD_TOPIC --fro
 
 ## 🧠 How It Works
 
-1. JSON messages like `{"name":"Alice", "dob":"2000-06-01"}` are produced to `SOURCE_TOPIC`.
+1. JSON messages like `{"name":"Ajay", "dob":"2000-06-01"}` are produced to `SOURCE_TOPIC`.
 2. The Beam pipeline:
     - Deserializes JSON into `Person` objects.
     - Calculates age from DOB.
@@ -201,20 +191,19 @@ kafka-console-consumer --bootstrap-server localhost:9092 --topic ODD_TOPIC --fro
 If you produce:
 
 ```json
-{"name":"Charlie","dob":"1998-05-10"}
-{"name":"Daisy","dob":"1997-08-12"}
+{"name":"Ajay","dob":"2000-06-01"}
+{"name":"Rutik","dob":"1999-01-02"}
 ```
 
 Then:
-- Charlie (26) goes to `EVEN_TOPIC`
-- Daisy (27) goes to `ODD_TOPIC`
+- Charlie (25) goes to `ODD_TOPIC`
+- Daisy (26) goes to `EVEN_TOPIC`
 
 ---
 
 ## 💡 Notes
 
-- Ensure your Kafka container is healthy (`docker ps` to check).
-- Kafka broker must be accessible at `localhost:9092` from your app.
+- Ensure Kafka container is healthy (`docker ps` to check).
 - Make sure `dob` is in ISO format (`yyyy-MM-dd`).
 
 ---
@@ -223,19 +212,4 @@ Then:
 
 ```bash
 docker-compose down
-docker container prune
 ```
-
-CMD 1
-docker run -d -p 8081:8081 apache/flink:1.20.1
-docker run -d --name zookeeper -p 2181:2181 zookeeper:3.8.1
-C:\docker>docker-compose up -d
-docker ps
-docker exec -it docker-kafka-1 bash
-kafka-console-producer --bootstrap-server localhost:9092 --topic SOURCE_TOPIC
-{"name":"Alice","dob":"2000-06-01"}
-{"name":"Bob","dob":"2010-01-01"}
-
-CMD 2
-docker exec -it docker-kafka-1 bash
-kafka-console-consumer --bootstrap-server localhost:9092 --topic ODD_TOPIC --from-beginning

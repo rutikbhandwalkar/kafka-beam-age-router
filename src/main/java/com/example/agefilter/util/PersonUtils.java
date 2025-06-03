@@ -4,12 +4,16 @@ import com.example.agefilter.model.Person;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import org.apache.beam.sdk.values.TypeDescriptor; // Import TypeDescriptor
+import org.apache.beam.sdk.values.TypeDescriptor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDate;
 import java.time.Period;
 
 public class PersonUtils {
+
+    private static final Logger logger = LoggerFactory.getLogger(PersonUtils.class);
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule());
@@ -21,7 +25,7 @@ public class PersonUtils {
         try {
             return MAPPER.writeValueAsString(person);
         } catch (JsonProcessingException e) {
-            System.err.println("Failed to serialize Person to JSON: " + person);
+            logger.error("Failed to serialize Person to JSON: {}",person, e);
             throw new RuntimeException("Failed to serialize Person to JSON", e);
         }
     }
@@ -30,7 +34,7 @@ public class PersonUtils {
         try {
             return MAPPER.readValue(json, Person.class);
         } catch (JsonProcessingException e) {
-            System.err.println("Failed to deserialize JSON to Person: " + json);
+            logger.error("Failed to deserialize JSON to Person: {}", json, e);
             throw new RuntimeException("Failed to deserialize JSON to Person", e);
         }
     }

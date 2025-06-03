@@ -15,11 +15,15 @@ import org.apache.beam.sdk.transforms.SimpleFunction;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDate;
 import java.time.Period;
 
 public class BeamPipeline {
+
+    private static final Logger logger = LoggerFactory.getLogger(BeamPipeline.class);
 
     private static final String BOOTSTRAP_SERVERS = "localhost:9092";
     private static final String SOURCE_TOPIC = "SOURCE_TOPIC";
@@ -52,10 +56,10 @@ public class BeamPipeline {
                     public Person apply(String json) {
                         try {
                             Person person = MAPPER.readValue(json, Person.class);
-                            System.out.println("Received: " + person);  // log
+                            logger.info("Received: {}", person);
                             return person;
                         } catch (JsonProcessingException e) {
-                            System.err.println("Failed to parse JSON: " + json);
+                            logger.error("Failed to parse JSON: {}", json, e);
                             throw new RuntimeException(e);
                         }
                     }
@@ -66,10 +70,10 @@ public class BeamPipeline {
             public String apply(Person person) {
                 try {
                     String json = MAPPER.writeValueAsString(person);
-                    System.out.println("Sending: " + json);  // log
+                    logger.info("Sending: {}", json);
                     return json;
                 } catch (Exception e) {
-                    System.err.println("Failed to serialize Person: " + person);
+                    logger.error("Failed to serialize Person: {}", person, e);
                     throw new RuntimeException(e);
                 }
             }
@@ -79,7 +83,7 @@ public class BeamPipeline {
                 .apply("FilterEvenAge", Filter.by(person -> {
                     int age = calculateAge(person);
                     boolean isEven = age % 2 == 0;
-                    System.out.println("👤 " + person.getName() + " is " + age + " years old → " + (isEven ? "EVEN" : "ODD"));
+                    logger.info("👤 {} is {} years old → {}", person.getName(), age, isEven ? "EVEN" : "ODD");
                     return isEven;
                 }))
                 .apply("SerializeEvenPersons", personToJson)
@@ -94,7 +98,7 @@ public class BeamPipeline {
                 .apply("FilterOddAge", Filter.by(person -> {
                     int age = calculateAge(person);
                     boolean isOdd = age % 2 != 0;
-                    System.out.println("👤 " + person.getName() + " is " + age + " years old → " + (isOdd ? "ODD" : "EVEN"));
+                    logger.info("👤 {} is {} years old → {}", person.getName(), age, isOdd ? "ODD" : "EVEN");
                     return isOdd;
                 }))
                 .apply("SerializeOddPersons", personToJson)
