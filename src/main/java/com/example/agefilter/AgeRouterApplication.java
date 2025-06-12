@@ -9,7 +9,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class AgeRouterApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(AgeRouterApplication.class, args); // Start Spring Boot application
-        BeamPipeline.runPipeline(); // Launch Apache Beam pipeline after app starts
+        SpringApplication.run(AgeRouterApplication.class, args); // Start Spring Boot applications
     }
 }

@@ -15,29 +15,42 @@ import org.apache.beam.sdk.transforms.SimpleFunction;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
+import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.Period;
 
 // Beam pipeline for reading from Kafka, filtering by age parity, and writing to separate topics
-public class BeamPipeline {
+@Service
+public class BeamPipeline implements Serializable {
 
     private static final Logger logger = LoggerFactory.getLogger(BeamPipeline.class);
 
-    // Kafka configuration constants
-    private static final String BOOTSTRAP_SERVERS = "localhost:9092";
-    private static final String SOURCE_TOPIC = "SOURCE_TOPIC";
-    private static final String EVEN_TOPIC = "EVEN_TOPIC";
-    private static final String ODD_TOPIC = "ODD_TOPIC";
+    // Inject Kafka properties directly using @Value
+    @Value("${kafka.bootstrap-servers}")
+    private String bootstrapServers;
+
+    @Value("${kafka.source-topic}")
+    private String sourceTopic;
+
+    @Value("${kafka.even-topic}")
+    private String evenTopic;
+
+    @Value("${kafka.odd-topic}")
+    private String oddTopic;
 
     // Jackson ObjectMapper configured for Java 8 time support
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule());
 
     // Main method to build and run the Beam pipeline
-    public static void runPipeline() {
+    @PostConstruct
+    public void runPipeline() {
         // Set up Flink runner options
         FlinkPipelineOptions options = PipelineOptionsFactory.as(FlinkPipelineOptions.class);
         options.setRunner(FlinkRunner.class);
@@ -51,8 +64,8 @@ public class BeamPipeline {
         var persons = pipeline
                 .apply("ReadFromKafka",
                         KafkaIO.<String, String>read()
-                                .withBootstrapServers(BOOTSTRAP_SERVERS)
-                                .withTopic(SOURCE_TOPIC)
+                                .withBootstrapServers(bootstrapServers) // Use injected property
+                                .withTopic(sourceTopic)                 // Use injected property
                                 .withKeyDeserializer(StringDeserializer.class)
                                 .withValueDeserializer(StringDeserializer.class)
                                 .withoutMetadata())
@@ -62,11 +75,11 @@ public class BeamPipeline {
                     @Override
                     public Person apply(String json) {
                         try {
-                            Person person = MAPPER.readValue(json, Person.class); // Deserialize JSON to Person
-                            logger.info("Received: {}", person);
+                            Person person = MAPPER.readValue(json, Person.class);
+                            System.out.println("Received: " + person);  // log
                             return person;
                         } catch (JsonProcessingException e) {
-                            logger.error("Failed to parse JSON: {}", json, e);
+                            System.err.println("Failed to parse JSON: " + json);
                             throw new RuntimeException(e);
                         }
                     }
@@ -98,8 +111,8 @@ public class BeamPipeline {
                 .apply("SerializeEvenPersons", personToJson) // Convert to JSON
                 .apply("WriteEvenToKafka",
                         KafkaIO.<Void, String>write()
-                                .withBootstrapServers(BOOTSTRAP_SERVERS)
-                                .withTopic(EVEN_TOPIC)
+                                .withBootstrapServers(bootstrapServers)
+                                .withTopic(evenTopic)
                                 .withValueSerializer(StringSerializer.class)
                                 .values());
 
@@ -114,8 +127,8 @@ public class BeamPipeline {
                 .apply("SerializeOddPersons", personToJson) // Convert to JSON
                 .apply("WriteOddToKafka",
                         KafkaIO.<Void, String>write()
-                                .withBootstrapServers(BOOTSTRAP_SERVERS)
-                                .withTopic(ODD_TOPIC)
+                                .withBootstrapServers(bootstrapServers)
+                                .withTopic(oddTopic)
                                 .withValueSerializer(StringSerializer.class)
                                 .values());
 
